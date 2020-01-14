@@ -13,6 +13,8 @@ import com.itextpdf.layout.property.TextAlignment;
 import com.tf.print.template.excel.ExcelExReader;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.element.Cell;
+import org.apache.poi.hssf.usermodel.HSSFPictureData;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 
@@ -80,14 +82,11 @@ public class ExcelObject extends PdfTool{
 
         int rows = excelReader.getSheet().getPhysicalNumberOfRows();
         List<Cell> cells = new ArrayList<>();
-        float[] widths = null;
-//        float mw = 0;
         Map<String, MergeCelInfo> skipCells = new HashMap<>();
         for (int i = 0; i < rows; i++) {
             Row row = excelReader.getSheet().getRow(i);
             int columns = row.getLastCellNum();
 
-//            float[] cws = new float[columns];
             for (int j = 0; j < columns; j++) {
 
                 MergeCelInfo mergeCelInfo = skipCells.get(getKey(i,j));
@@ -103,7 +102,6 @@ public class ExcelObject extends PdfTool{
                 }
 
                 float cw = getColumnWidth(cell);
-//                cws[cell.getColumnIndex()] = cw;
 
                 cell.setCellType(CellType.STRING);
 
@@ -146,15 +144,6 @@ public class ExcelObject extends PdfTool{
                 cells.add(pdfpCell);
                 j += colspan - 1;
             }
-//
-//            float rw = 0;
-//            for (int j = 0; j < cws.length; j++) {
-//                rw += cws[j];
-//            }
-//            if (rw > mw ||  mw == 0) {
-//                widths = cws;
-//                mw = rw;
-//            }
         }
 
         for (Cell pdfpCell : cells) {
@@ -225,12 +214,31 @@ public class ExcelObject extends PdfTool{
     }
 
     private byte[] getCellImage(org.apache.poi.ss.usermodel.Cell cell) {
+        if(!hasPic(cell)){
+            return null;
+        }
         Map<String, PictureData> picMap = ExcelPicUtil.getPicMap(excelReader.getWorkbook(),excelReader.getWorkbook().getSheetIndex(cell.getSheet().getSheetName()));
         PictureData picData = picMap.get(String.format("%s_%s",cell.getRowIndex(),cell.getColumnIndex()));
         if(picData == null){
             return null;
         }
         return picData.getData();
+    }
+
+    /**
+     * 暂时只支持03 excel
+     * @param cell
+     * @return
+     */
+    private boolean hasPic(org.apache.poi.ss.usermodel.Cell cell) {
+        if(excelReader.isXlsx()){
+            return false;
+        }else{
+            if(cell.getSheet().getDrawingPatriarch() == null){
+                return false;
+            }
+            return true;
+        }
     }
 
 

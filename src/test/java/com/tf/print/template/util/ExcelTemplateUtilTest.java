@@ -100,7 +100,7 @@ public class ExcelTemplateUtilTest {
 //        Rectangle rectangle = new Rectangle(0,0,(float) (74*72/25.4),(float) (130*72/25.4));
 
 //        17.6     16
-        ExcelExReader templateReader = ExcelTemplateUtil.getReader(excelPath2,1);
+        ExcelExReader templateReader = ExcelTemplateUtil.getReader(excelPath2,0);
         ExcelObject excelObject = new ExcelObject(templateReader,new FileOutputStream(new File("e:/templateConvertPdf2.pdf")));
 //        excelObject.setAutoFit(false);
 //        excelObject.setPageSize(new PageSize((float) (8*2.54*72), (float) (12*2.54*72)));
