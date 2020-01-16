@@ -1,6 +1,8 @@
 package com.tf.print.template.model;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.poi.excel.ExcelPicUtil;
+import com.itextpdf.io.font.FontConstants;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
@@ -13,13 +15,18 @@ import com.itextpdf.layout.property.TextAlignment;
 import com.tf.print.template.excel.ExcelExReader;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.element.Cell;
-import org.apache.poi.hssf.usermodel.HSSFPictureData;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import com.tf.print.template.exception.TemplateException;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.tools.imageio.ImageIOUtil;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import sun.misc.BASE64Encoder;
 
-import java.io.IOException;
-import java.io.OutputStream;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,16 +39,36 @@ import java.util.Map;
  * @Author kyjonny
  * @Date 6/1/2020 10:51 上午
  **/
+@Slf4j
 public class ExcelObject extends PdfTool{
 
     private ExcelExReader excelReader;
 
     private PageSize pageSize = PageSize.A4;
 
+    /**
+     * 转换图片时默认dpi值为300
+     */
+    private int dpi = 300;
+
+    /**
+     * 生产图片时，渲染的图像类型
+     */
+    private ImageType colourType = ImageType.RGB;
+
+    /**
+     * 导出图片类型
+     */
+    private PictureType pictureType = PictureType.PNG;
+
+    private String filePath;
+
+    private ByteArrayOutputStream byteArrayOutputStream;
+
     //中文字体
     static PdfFont bfChinese = null;
-    static {
 
+    static {
         try {
             bfChinese = PdfFontFactory.createFont("STSong-Light", "UniGB-UCS2-H",true);
         } catch (Exception e) {
@@ -49,17 +76,79 @@ public class ExcelObject extends PdfTool{
         }
     }
 
-    public ExcelObject(ExcelExReader excelReader, OutputStream os) {
+    public ExcelObject(ExcelExReader excelReader) {
         this.excelReader = excelReader;
-        this.os = os;
+        this.os = new ByteArrayOutputStream();
+    }
 
+    public ExcelObject(ExcelExReader excelReader, String path) throws IOException {
+        this.excelReader = excelReader;
+        this.os = new ByteArrayOutputStream();
+        this.filePath = path;
+    }
+
+    public String getBase64(){
+        BASE64Encoder encoder = new BASE64Encoder();
+        return encoder.encode(this.byteArrayOutputStream.toByteArray());
+    }
+
+    public void convertImg() throws IOException {
+        convert();
+        if(StrUtil.isNotBlank(filePath)){
+            String formatName = filePath.substring(filePath.lastIndexOf(46) + 1);
+            if(StrUtil.isNotBlank(formatName)){
+                try {
+                    this.pictureType = PictureType.valueOf(formatName);
+                } catch (IllegalArgumentException e) {
+                    throw new TemplateException("不支持当前类型的图片转化");
+                }
+            }
+        }
+        pdfConvertImage();
+        if(StrUtil.isNotBlank(filePath) ){
+            this.byteArrayOutputStream.writeTo(new FileOutputStream(filePath));
+        }
+    }
+
+    private void pdfConvertImage() {
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        outStream = (ByteArrayOutputStream) this.os;
+        try (final PDDocument document = PDDocument.load( new ByteArrayInputStream(outStream.toByteArray()))){
+            PDFRenderer pdfRenderer = new PDFRenderer(document);
+            for (int page = 0; page < document.getNumberOfPages(); ++page){
+                BufferedImage bim = pdfRenderer.renderImageWithDPI(page, dpi, colourType);
+                float compressionQuality = 1.0F;
+                if (this.pictureType.equals(PictureType.png) || this.pictureType.equals(PictureType.PNG)) {
+                    compressionQuality = 0.0F;
+                }
+                try {
+                    this.byteArrayOutputStream = new ByteArrayOutputStream();
+                    ImageIOUtil.writeImage(bim, this.pictureType.name(), this.byteArrayOutputStream, 186, compressionQuality);
+                } finally {
+                    this.byteArrayOutputStream.close();
+                }
+            }
+            document.close();
+        } catch (IOException e){
+            log.error("Exception while trying to create pdf document - {}" ,e);
+        }
     }
 
     public void setPageSize(PageSize pageSize) {
         this.pageSize = pageSize;
+        return;
     }
 
-    public void convert() throws IOException {
+    public void convertPdf() throws IOException {
+        convert();
+        this.byteArrayOutputStream = (ByteArrayOutputStream) this.os;
+        if(StrUtil.isNotBlank(filePath)){
+            this.byteArrayOutputStream.writeTo(new FileOutputStream(filePath));
+        }
+    }
+
+
+    private void convert() throws IOException {
         getDocument().getPdfDocument().setDefaultPageSize(this.pageSize);
         getDocument().setMargins(5,5,5,5);
         Table table = this.toCreatePdfTableInfo();
@@ -187,6 +276,9 @@ public class ExcelObject extends PdfTool{
 
         PdfFont f = getFontForThisLanguage(language);
         Paragraph paragraph = new Paragraph(cell.getStringCellValue()).setFont(f);
+        if(excelReader.getWorkbook().getFontAt(cell.getCellStyle().getFontIndexAsInt()).getBold()){
+            paragraph.setBold();
+        }
         paragraph.setFontSize(size);
         return paragraph;
     }
@@ -248,15 +340,6 @@ public class ExcelObject extends PdfTool{
      * @return
      */
     protected float getColumnWidth(org.apache.poi.ss.usermodel.Cell cell) {
-//        int poiCWidth = excelReader.getSheet().getColumnWidth(cell.getColumnIndex());
-//        int colWidthpoi = poiCWidth;
-//        int widthPixel = 0;
-//        if (colWidthpoi >= 416) {
-//            widthPixel = (int) (((colWidthpoi - 416.0) / 256.0) * 8.0 + 13.0 + 0.5);
-//        } else {
-//            widthPixel = (int) (colWidthpoi / 416.0 * 13.0 + 0.5);
-//        }
-//        return widthPixel;
         return excelReader.getSheet().getColumnWidthInPixels(cell.getColumnIndex());
     }
 
@@ -336,5 +419,14 @@ public class ExcelObject extends PdfTool{
             result = com.itextpdf.layout.property.HorizontalAlignment.CENTER;
         }
         return result;
+    }
+
+    public int getDpi() {
+        return dpi;
+    }
+
+    public ExcelObject setDpi(int dpi) {
+        this.dpi = dpi;
+        return this;
     }
 }

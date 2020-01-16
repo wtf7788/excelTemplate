@@ -4,7 +4,7 @@ import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfWriter;
 import com.itextpdf.layout.Document;
 
-import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 
 /**
  * @ClassName PdfTool
@@ -16,7 +16,7 @@ public class PdfTool {
 
     protected Document document;
 
-    protected OutputStream os;
+    protected ByteArrayOutputStream os;
 
     public Document getDocument() {
 
