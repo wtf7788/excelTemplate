@@ -1,8 +1,8 @@
 package com.tf.print.template.model;
 
+import cn.hutool.core.util.ReflectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.poi.excel.ExcelPicUtil;
-import com.itextpdf.io.font.FontConstants;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
@@ -27,10 +27,7 @@ import sun.misc.BASE64Encoder;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 参照项目https://github.com/caryyu/excel2pdf 进行了修改
@@ -45,6 +42,12 @@ public class ExcelObject extends PdfTool{
     private ExcelExReader excelReader;
 
     private PageSize pageSize = PageSize.A4;
+
+    private String DELIMITER_PLACEHOLDER_START = "${";
+
+    private String DELIMITER_PLACEHOLDER_END = "}";
+
+    private Object data;
 
     /**
      * 转换图片时默认dpi值为300
@@ -134,9 +137,9 @@ public class ExcelObject extends PdfTool{
         }
     }
 
-    public void setPageSize(PageSize pageSize) {
+    public ExcelObject setPageSize(PageSize pageSize) {
         this.pageSize = pageSize;
-        return;
+        return this;
     }
 
     public void convertPdf() throws IOException {
@@ -217,8 +220,8 @@ public class ExcelObject extends PdfTool{
                 }
 
                 Cell pdfpCell = new Cell(rowspan,colspan);
-                pdfpCell.setPaddingTop(0);
-                pdfpCell.setPaddingBottom(0);
+                pdfpCell.setPaddingTop(0f);
+                pdfpCell.setPaddingBottom(0f);
                 pdfpCell.setVerticalAlignment(getVAlignByExcel(cell.getCellStyle().getVerticalAlignment()));
                 pdfpCell.setHorizontalAlignment(getHAlignByExcel(cell.getCellStyle().getAlignment()));
                 pdfpCell.setTextAlignment(getTextAlignment(cell.getCellStyle().getAlignment()));
@@ -227,7 +230,7 @@ public class ExcelObject extends PdfTool{
                     pdfpCell.setHeight(this.getPixelHeight(row.getHeightInPoints()));
                 }
                 addImageByPOICell(pdfpCell , cell , cw);
-                pdfpCell.add(getValue(cell,null,10));
+                pdfpCell.add(getValue(cell,null,11));
                 addBorderByExcel(pdfpCell, cell.getCellStyle(),i,j);
 
                 cells.add(pdfpCell);
@@ -275,12 +278,17 @@ public class ExcelObject extends PdfTool{
     private Paragraph getValue(org.apache.poi.ss.usermodel.Cell cell, String language, float size) {
 
         PdfFont f = getFontForThisLanguage(language);
-        Paragraph paragraph = new Paragraph(cell.getStringCellValue()).setFont(f);
-        if(excelReader.getWorkbook().getFontAt(cell.getCellStyle().getFontIndexAsInt()).getBold()){
+        Font font = excelReader.getWorkbook().getFontAt(cell.getCellStyle().getFontIndexAsInt());
+        Paragraph paragraph = new Paragraph(getDataValueByKey(getKey(cell.getStringCellValue()))).setFont(f);
+        if(font.getBold()){
             paragraph.setBold();
         }
         paragraph.setFontSize(size);
         return paragraph;
+    }
+
+    private Paragraph getValue(org.apache.poi.ss.usermodel.Cell cell, String language) {
+        return getValue(cell,language,excelReader.getWorkbook().getFontAt(cell.getCellStyle().getFontIndexAsInt()).getFontHeightInPoints());
     }
 
     private PdfFont getFontForThisLanguage(String language) {
@@ -427,6 +435,66 @@ public class ExcelObject extends PdfTool{
 
     public ExcelObject setDpi(int dpi) {
         this.dpi = dpi;
+        return this;
+    }
+
+    private String getDataValueByKey(CellValue cellValue){
+        if(cellValue == null){
+            return "";
+        }
+
+        if(StrUtil.isBlank(cellValue.getValue())){
+            return "";
+        }
+        if(data == null){
+            return cellValue.getValue();
+        }
+        if(!cellValue.isFlag()){
+            return cellValue.getValue();
+        }
+
+        if(data instanceof Map){
+            return Optional.ofNullable(((Map) data).get(cellValue.getValue())).orElse("").toString();
+        }else{
+            Object obj = ReflectUtil.invoke(data,StrUtil.upperFirstAndAddPre(cellValue.getValue(),"get"));
+            return Optional.ofNullable(obj).orElse("").toString();
+        }
+    }
+
+    private CellValue getKey(String text){
+        boolean flag = false;
+        CellValue cellValue = new CellValue();
+
+        if(StrUtil.isBlank(text)){
+            text = "";
+        }
+
+        if(text.length() > DELIMITER_PLACEHOLDER_START.length()){
+            if(StrUtil.equals(DELIMITER_PLACEHOLDER_START,text.substring(0,DELIMITER_PLACEHOLDER_START.length()))){
+                text = text.substring(DELIMITER_PLACEHOLDER_START.length(),text.length());
+                flag = true;
+            }
+        }
+
+        if(flag && text.length() >DELIMITER_PLACEHOLDER_END.length()){
+            if(StrUtil.equals(DELIMITER_PLACEHOLDER_END,text.substring(text.length() -DELIMITER_PLACEHOLDER_END.length(),text.length()))){
+                text = text.substring(0,text.length() - DELIMITER_PLACEHOLDER_END.length());
+                flag = true;
+            }
+        }
+
+        cellValue.setFlag(flag)
+                .setText(text);
+        return cellValue;
+//        if(!flag){
+//            return "";
+//        }
+//
+//        return text;
+    }
+
+    public ExcelObject setData(Object data) {
+        this.data = data;
         return this;
     }
 }

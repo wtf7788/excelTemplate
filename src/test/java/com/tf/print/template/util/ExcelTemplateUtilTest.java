@@ -7,6 +7,8 @@ import org.junit.Test;
 import sun.misc.BASE64Decoder;
 
 import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
 
 
 public class ExcelTemplateUtilTest {
@@ -69,9 +71,13 @@ public class ExcelTemplateUtilTest {
     @Test
     public void getImage2() throws IOException {
         ExcelExReader templateReader = ExcelTemplateUtil.getReader(excelPath);
+        Map<String,Object> data = new HashMap<>();
+        data.put("suttle","123");
+
         ExcelObject excelObject = new ExcelObject(templateReader);
         excelObject.setDpi(186)
-                .setPageSize(new PageSize((float) (74*72/25.4),(float) (130*72/25.4)));
+                .setPageSize(new PageSize((float) (74*72/25.4),(float) (130*72/25.4)))
+                .setData(data);
         excelObject.convertImg();
         System.out.println(excelObject.getBase64());
         decodeBase64ToFile(excelObject.getBase64(),"/Users/kyjonny/Desktop/tmp/","base64---2.png");
